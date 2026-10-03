@@ -2545,12 +2545,20 @@ else boot();
 
 <!-- LOCKED DARK-MODE-ONLY BLOCK FIX -->
 <style id="HDP-DARK-BLOCK-UPWARD-FINAL">
+html.dark #hdpMiniEditorPage,
+body.dark #hdpMiniEditorPage,
+.dark #hdpMiniEditorPage,
+.hdpMiniFullscreen #hdpMiniEditorPage{
+  touch-action:pan-y!important;
+}
 html.dark #hdpMiniEditorPage::selection,
 body.dark #hdpMiniEditorPage::selection,
 html.dark #hdpMiniEditorPage *::selection,
 body.dark #hdpMiniEditorPage *::selection,
 .dark #hdpMiniEditorPage::selection,
 .dark #hdpMiniEditorPage *::selection,
+.hdpMiniFullscreen #hdpMiniEditorPage::selection,
+.hdpMiniFullscreen #hdpMiniEditorPage *::selection,
 #hdpMiniEditorPage.hdpMiniDeleteSelectionGuard::selection,
 #hdpMiniEditorPage.hdpMiniDeleteSelectionGuard *::selection,
 #hdpMiniEditorPage.hdpBlockFixActive::selection,
@@ -2572,47 +2580,101 @@ body.dark #hdpMiniEditorPage *::-moz-selection,
 <script id="HDP-DARK-BLOCK-UPWARD-FINAL-JS">(function(){
 function attachDarkGuard(){
   const ed=document.getElementById('hdpMiniEditorPage');
-  if(!ed||ed.dataset.darkBlockUpwardFinal==='1')return;
-  ed.dataset.darkBlockUpwardFinal='1';
+  if(!ed||ed.dataset.darkBlockUpwardFinal==='2')return;
+  ed.dataset.darkBlockUpwardFinal='2';
   const dark=()=>document.documentElement.classList.contains('dark')||document.body.classList.contains('dark');
   const inside=()=>{const s=window.getSelection();return !!(s&&s.rangeCount&&ed.contains(s.anchorNode));};
-  const collapse=()=>{
-    if(!dark()||!inside())return;
+  
+  const clearSel=()=>{
+    if(!dark())return;
     try{
       const s=window.getSelection();
-      if(!s||!s.rangeCount)return;
-      if(!s.isCollapsed){s.collapseToEnd();return;}
-      const r=s.getRangeAt(0).cloneRange();r.collapse(true);s.removeAllRanges();s.addRange(r);
+      if(!s)return;
+      if(s.removeAllRanges)s.removeAllRanges();
+      if(s.empty)s.empty();
     }catch(_e){}
   };
+
   const afterDelete=()=>{
     if(!dark())return;
     ed.classList.add('hdpMiniDeleteSelectionGuard','hdpBlockFixActive');
     requestAnimationFrame(()=>{
-      collapse();
-      setTimeout(collapse,0);
-      setTimeout(collapse,50);
-      setTimeout(()=>{ try{ed.classList.remove('hdpMiniDeleteSelectionGuard','hdpBlockFixActive');}catch(_e){} },150);
+      clearSel();
+      setTimeout(clearSel,0);
+      setTimeout(clearSel,40);
+      setTimeout(()=>{ try{ed.classList.remove('hdpMiniDeleteSelectionGuard','hdpBlockFixActive');}catch(_e){} }, 400);
     });
   };
+
+  // 1. Amankan saat hapus/backspace
   ed.addEventListener('input',e=>{
     if(!dark())return;
     const t=e.inputType||'';
     if(t==='deleteContentBackward'||t==='deleteContentForward')afterDelete();
   },true);
+
   ed.addEventListener('keydown',e=>{
     if(!dark())return;
     if(e.key==='Backspace'||e.key==='Delete'){
       ed.classList.add('hdpMiniDeleteSelectionGuard','hdpBlockFixActive');
     }
   },true);
+
   ed.addEventListener('keyup',e=>{
     if(!dark())return;
     if(e.key==='Backspace'||e.key==='Delete')afterDelete();
   },true);
-  ed.addEventListener('touchend',()=>{
-    if(dark()){ setTimeout(collapse,50); }
+
+  // 2. Amankan saat geser/usap halus ke atas di HP
+  let touchStartY=0, isSwiping=false;
+  ed.addEventListener('touchstart',e=>{
+    if(e.touches&&e.touches[0]){
+      touchStartY=e.touches[0].clientY;
+      isSwiping=false;
+    }
   },{passive:true});
+
+  ed.addEventListener('touchmove',e=>{
+    if(!dark())return;
+    if(e.touches&&e.touches[0]){
+      const dy=Math.abs(e.touches[0].clientY-touchStartY);
+      if(dy>4){
+        isSwiping=true;
+        clearSel();
+      }
+    }
+  },{passive:true});
+
+  ed.addEventListener('touchend',()=>{
+    if(!dark())return;
+    if(isSwiping){
+      clearSel();
+      requestAnimationFrame(clearSel);
+      setTimeout(clearSel,30);
+      setTimeout(clearSel,80);
+      isSwiping=false;
+    }
+  },{passive:true});
+
+  // 3. Tangkal seleksi liar saat scroll
+  window.addEventListener('scroll',()=>{
+    if(dark()&&inside())clearSel();
+  },{passive:true});
+
+  const scrollParent=ed.closest('.hdpMiniFullscreen')||ed.parentElement;
+  if(scrollParent){
+    scrollParent.addEventListener('scroll',()=>{
+      if(dark()&&inside())clearSel();
+    },{passive:true});
+  }
+
+  // 4. Pengaman seleksi seketika saat bergeser
+  document.addEventListener('selectionchange',()=>{
+    if(!dark())return;
+    if(isSwiping&&inside()){
+      clearSel();
+    }
+  },true);
 }
 
 if(document.readyState==='loading'){
@@ -2626,5 +2688,5 @@ try{
   });
   obs.observe(document.documentElement,{childList:true,subtree:true});
 }catch(_e){}
-})();</script> 
+})();</script>
 </body></html>
