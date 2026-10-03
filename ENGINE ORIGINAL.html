@@ -1614,7 +1614,17 @@ async function hdpMiniOpen(){
     pdfBtn.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();hdpMiniPrint();};
   }
   const imgInput=document.getElementById('hdpMiniImageInput');
-  document.getElementById('hdpMiniImage').onclick=()=>imgInput.click();
+const imgBtn=document.getElementById('hdpMiniImage');
+if(imgBtn && imgInput){
+  const pickImg=(ev)=>{
+    if(ev){ try{ev.preventDefault();ev.stopPropagation();}catch(_e){} }
+    try{ imgInput.value=''; }catch(_e){}
+    imgInput.click();
+  };
+  imgBtn.onclick=pickImg;
+  imgBtn.ontouchend=pickImg;
+  }
+  
   imgInput.onchange=e=>{
     const f=e.target.files?.[0]; if(!f) return;
     const reader=new FileReader();
@@ -1944,17 +1954,30 @@ function hdpMiniExportCss(printMode){
 
 function hdpMiniPrint(){
   const ed=document.getElementById('hdpMiniEditorPage');
-  if(!ed){ setMessage('Mini Editor belum terbuka.'); return; }
+  if(!ed){ try{setMessage('Mini Editor belum terbuka.');}catch(_e){} return; }
   try{
-    // Use the device/browser's native print dialog directly.
-    // The @media print rules below isolate the editor page as an A4 document.
     ed.classList.add('hdpMiniPrinting');
     window.print();
   }catch(e){
     console.error('HDP mini print error:',e);
-    setMessage('Cetak/PDF gagal dibuka.');
+    hdpMiniPrintFallback(ed);
   }finally{
     setTimeout(()=>{ try{ed.classList.remove('hdpMiniPrinting');}catch(_e){} }, 800);
+  }
+}
+
+function hdpMiniPrintFallback(ed){
+  try{
+    const content=ed.innerHTML;
+    const title=document.title||"Dokumen HDP";
+    const blob=new Blob([`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title><style>@page{size:A4;margin:15mm;}body{font-family:sans-serif;padding:20px;color:#111;line-height:1.6;}img{max-width:100%;height:auto;}</style></head><body><div style="margin-bottom:20px;padding:12px;background:#e8f4fd;border-radius:8px;font-size:14px;color:#0B4F9C;">💡 <strong>Petunjuk Cetak:</strong> Buka menu browser lalu pilih Cetak / Simpan sebagai PDF.</div>${content}</body></html>`],{type:"text/html"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download="dokumen_cetak_hdp.html";
+    a.click();
+    alert("✅ Dokumen siap cetak berhasil diunduh (dokumen_cetak_hdp.html). Buka file lalu pilih Cetak / Simpan PDF!");
+  }catch(err){
+    alert("Cetak langsung tidak didukung. Silakan gunakan tombol Simpan.");
   }
 }
 
@@ -2026,38 +2049,40 @@ function hdpMiniStripExportIdentity(text){
 
 async function hdpMiniShare(){
   const ed=document.getElementById('hdpMiniEditorPage');
-  if(!ed) return;
+  if(!ed){ try{setMessage('Mini Editor belum terbuka.');}catch(_e){} return; }
   const text=ed.innerText || ed.textContent || '';
   const title=document.title || 'Dokumen HDP';
-  if(navigator.share){
+  let shared = false;
+  if(navigator.share && window.isSecureContext !== false){
     try{
       await navigator.share({title:title,text:text});
+      shared = true;
     }catch(err){
-      if(err?.name!=='AbortError'){
-        console.error('Share error:',err);
-        try{setMessage('Share gagal.');}catch(_e){}
-      }
+      if(err?.name === 'AbortError') return;
+      console.warn('Share dialihkan ke clipboard:', err);
     }
-  }else{
+  }
+  if(!shared){
     try{
-      if(navigator.clipboard?.writeText){
+      if(navigator.clipboard && navigator.clipboard.writeText){
         await navigator.clipboard.writeText(text);
       }else{
         const ta=document.createElement('textarea');
         ta.value=text;
         ta.setAttribute('readonly','');
         ta.style.position='fixed';ta.style.left='-9999px';ta.style.top='-9999px';
-        document.body.appendChild(ta);ta.select();
+        document.body.appendChild(ta);
+        ta.select();
         document.execCommand('copy');
         ta.remove();
       }
-      alert('Teks materi berhasil disalin ke clipboard!');
+      alert('✅ Teks materi berhasil disalin ke clipboard! Silakan buka WhatsApp atau aplikasi lain untuk menempelkannya.');
     }catch(e){
-      console.error('Clipboard fallback error:',e);
-      alert('Perangkat tidak mendukung fitur Share langsung.');
+      alert('Teks materi:\n' + text.substring(0, 200));
     }
   }
 }
+  
 
 
 function bind(){
@@ -2518,12 +2543,18 @@ else boot();
 })();</script>
 
 
-<!-- LOCKED DARK-MODE-ONLY BLOCK FIX: no light-mode or non-editor behavior is changed. -->
+<!-- LOCKED DARK-MODE-ONLY BLOCK FIX -->
 <style id="HDP-DARK-BLOCK-UPWARD-FINAL">
 html.dark #hdpMiniEditorPage::selection,
 body.dark #hdpMiniEditorPage::selection,
 html.dark #hdpMiniEditorPage *::selection,
-body.dark #hdpMiniEditorPage *::selection{
+body.dark #hdpMiniEditorPage *::selection,
+.dark #hdpMiniEditorPage::selection,
+.dark #hdpMiniEditorPage *::selection,
+#hdpMiniEditorPage.hdpMiniDeleteSelectionGuard::selection,
+#hdpMiniEditorPage.hdpMiniDeleteSelectionGuard *::selection,
+#hdpMiniEditorPage.hdpBlockFixActive::selection,
+#hdpMiniEditorPage.hdpBlockFixActive *::selection{
   background:transparent!important;
   color:inherit!important;
   -webkit-text-fill-color:currentColor!important;
@@ -2531,13 +2562,15 @@ body.dark #hdpMiniEditorPage *::selection{
 html.dark #hdpMiniEditorPage::-moz-selection,
 body.dark #hdpMiniEditorPage::-moz-selection,
 html.dark #hdpMiniEditorPage *::-moz-selection,
-body.dark #hdpMiniEditorPage *::-moz-selection{
+body.dark #hdpMiniEditorPage *::-moz-selection,
+.dark #hdpMiniEditorPage::-moz-selection,
+.dark #hdpMiniEditorPage *::-moz-selection{
   background:transparent!important;
   color:inherit!important;
 }
 </style>
 <script id="HDP-DARK-BLOCK-UPWARD-FINAL-JS">(function(){
-function boot(){
+function attachDarkGuard(){
   const ed=document.getElementById('hdpMiniEditorPage');
   if(!ed||ed.dataset.darkBlockUpwardFinal==='1')return;
   ed.dataset.darkBlockUpwardFinal='1';
@@ -2554,18 +2587,44 @@ function boot(){
   };
   const afterDelete=()=>{
     if(!dark())return;
-    requestAnimationFrame(()=>{collapse();setTimeout(collapse,0);setTimeout(collapse,80);});
+    ed.classList.add('hdpMiniDeleteSelectionGuard','hdpBlockFixActive');
+    requestAnimationFrame(()=>{
+      collapse();
+      setTimeout(collapse,0);
+      setTimeout(collapse,50);
+      setTimeout(()=>{ try{ed.classList.remove('hdpMiniDeleteSelectionGuard','hdpBlockFixActive');}catch(_e){} },150);
+    });
   };
   ed.addEventListener('input',e=>{
     if(!dark())return;
     const t=e.inputType||'';
     if(t==='deleteContentBackward'||t==='deleteContentForward')afterDelete();
   },true);
+  ed.addEventListener('keydown',e=>{
+    if(!dark())return;
+    if(e.key==='Backspace'||e.key==='Delete'){
+      ed.classList.add('hdpMiniDeleteSelectionGuard','hdpBlockFixActive');
+    }
+  },true);
   ed.addEventListener('keyup',e=>{
     if(!dark())return;
     if(e.key==='Backspace'||e.key==='Delete')afterDelete();
   },true);
+  ed.addEventListener('touchend',()=>{
+    if(dark()){ setTimeout(collapse,50); }
+  },{passive:true});
 }
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
-})();</script>
+
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',attachDarkGuard,{once:true});
+}else{
+  attachDarkGuard();
+}
+try{
+  const obs=new MutationObserver(()=>{
+    if(document.getElementById('hdpMiniEditorPage'))attachDarkGuard();
+  });
+  obs.observe(document.documentElement,{childList:true,subtree:true});
+}catch(_e){}
+})();</script> 
 </body></html>
